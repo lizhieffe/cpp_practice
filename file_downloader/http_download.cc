@@ -108,7 +108,7 @@ bool HttpDownload::InitSocket() {
   return true;
 }
 
-bool HttpDownload::SendRequest() {
+boor HttpDownload::SendRequest() {
   if (get_path_.empty()) {
     return false;
   }
