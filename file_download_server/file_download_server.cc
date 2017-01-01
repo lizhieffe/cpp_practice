@@ -1,14 +1,23 @@
-#include "file_download_server.h"
+#include "file_download_server.hh"
 
 #include <cstring>
 #include <errno.h>
 #include <iostream>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
 
-#include "../../ztl/utils/socket_util.h"
+#include "network/socket_sender.hh"
+#include "utils/socket_util.h"
 
 namespace ztl {
 namespace {
+
 constexpr int kSocketListenQueue = 100;
+constexpr int kBufferSize=1000;
 
 #define RETURN_IF_FALSE(boolean)  \
   if (boolean == false) {         \
@@ -25,12 +34,19 @@ FileDownloadServer::FileDownloadServer(const char* address, int port)
   : address_(address),
     port_(port) {}
 
-FileDownloadServer::~FileDownloadServer() {}
+FileDownloadServer::~FileDownloadServer() {
+  if (socket_ > 0) {
+    close(socket_);
+  }
+}
 
 void FileDownloadServer::Start() {
   cout << GetHostName() << ": starting file download server on port: "
        << port_ << endl; 
   RETURN_IF_FALSE(InitSocket());
+  while (true) {
+    RETURN_IF_FALSE(HandleRequest());
+  }
 }
 
 bool FileDownloadServer::InitSocket() {
@@ -66,9 +82,70 @@ bool FileDownloadServer::InitSocket() {
          << std::endl;;
     return false;
   }
-  cout << "\nListening for incoming requests ...";
+  cout << "\nListening for incoming requests ...\n\n";
 
   return true;
+}
+
+bool FileDownloadServer::HandleRequest() {
+  struct sockaddr_storage their_addr;
+  socklen_t addr_size;
+  int new_socket = accept(socket_, (struct sockaddr*)&their_addr, &addr_size);
+  if (new_socket == -1) {
+    cerr << "Error: cannot accept new request: " << std::strerror(errno)
+         << std::endl;;
+    return false;
+  } else {
+    cout << "Accepted new request.";
+  }
+
+  int retry_count = 0;
+  struct timeval timeout;
+  timeout.tv_sec = 3;
+  timeout.tv_usec = 0;
+
+  std::string request;
+
+  while (true) {
+    char buf[kBufferSize] = {0};
+
+    fd_set read_fd_set;
+    FD_ZERO(&read_fd_set);
+    FD_SET(new_socket, &read_fd_set);
+
+    int err = select(new_socket + 1, &read_fd_set, nullptr, nullptr, &timeout);
+    if (err < 0) {
+      if (++retry_count >= 10) {
+        break;
+      } else {
+        continue;
+      }
+    }
+
+    int length = recv(new_socket, buf, kBufferSize, 0);
+    if (length < 0) {
+      std::cerr << "Cannot read data from socket. Error is: "
+                << std::strerror(errno) << std::endl;;
+      return false;
+    } else if (length == 0) {
+      return true;
+    }
+
+    request.append(buf);
+    if (request.find("\r\n\r\n", 0) != std::string::npos) {
+      std::cout << "Request: " << std::endl;
+      std::cout << request << std::endl;
+      break;
+    }
+  }
+
+  // Sends response.
+  std::string response { "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nHello World!\r\n" };
+  auto socket_sender = NewSocketSender(new_socket);
+  bool status = socket_sender->Send(response);
+
+  close(new_socket);
+  return status;
 }
 
 }  // namespace ztl

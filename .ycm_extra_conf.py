@@ -79,8 +79,8 @@ flags = [
 './tests/gmock/gtest/include',
 '-isystem',
 './tests/gmock',
-'-isystem',
-'./tests/gmock/include',
+'-isystem', './tests/gmock/include',
+'-isystem', '../ztl/src',
 ]
 
 

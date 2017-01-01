@@ -248,7 +248,7 @@ bool HttpDownload::ReceiveData() {
   }
   if (sscanf(findStr, "Content-Range: bytes %llu-%llu/%llu", 
              &start_pos, &end_pos, &total_size_in_response_header) != 3)
-    return false;
+    teturn false;
   if ((status != 200 && status != 206) || total_size_in_response_header == 0)
     return false;
   if (!header_received_) {    //第一次获取HTTP响应头,保存目标文件总大小

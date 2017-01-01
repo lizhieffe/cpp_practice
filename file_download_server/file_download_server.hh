@@ -1,10 +1,7 @@
 #ifndef FILE_DOWNLOAD_SERVER
 #define FILE_DOWNLOAD_SERVER
 
-#include <netdb.h>
 #include <string>
-#include <sys/types.h>
-#include <sys/socket.h>
 
 namespace ztl {
 
@@ -19,6 +16,7 @@ class FileDownloadServer {
  protected:
   // Initialize the socket and start listening.
   bool InitSocket();
+  bool HandleRequest();
 
  private:
   const std::string address_; 
