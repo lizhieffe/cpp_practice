@@ -16,7 +16,7 @@ class FileDownloadServer {
  protected:
   // Initialize the socket and start listening.
   bool InitSocket();
-  bool HandleRequest();
+  void HandleRequest(int socket_fd);
 
  private:
   const std::string address_; 
