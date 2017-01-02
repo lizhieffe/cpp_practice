@@ -1,9 +1,12 @@
 #include "file_download_server.hh"
 
+#include <arpa/inet.h>
 #include <cstring>
 #include <errno.h>
+#include <fstream>
 #include <iostream>
 #include <netdb.h>
+#include <regex>
 #include <sys/types.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -18,6 +21,8 @@ namespace {
 
 constexpr int kSocketListenQueue = 100;
 constexpr int kBufferSize=1000;
+
+constexpr char kContextLengthStr[] = "$CONTENT_LENGTH";
 
 #define RETURN_IF_FALSE(boolean)  \
   if (boolean == false) {         \
@@ -57,6 +62,7 @@ bool FileDownloadServer::InitSocket() {
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;  // use machine's IP 
 
+  //getaddrinfo("192.168.1.36", std::to_string(port_).c_str(), &hints, &res);
   getaddrinfo(nullptr, std::to_string(port_).c_str(), &hints, &res);
   AddrInfoDeleter res_deleter(res);
 
@@ -67,6 +73,20 @@ bool FileDownloadServer::InitSocket() {
     return false;
   }
 
+  //// Makes sure the port will be binded successfully even if the process exited
+  //// unexpectedly previously. 
+  //int i_set_option = 1;
+  //setsockopt(socket_, SOL_SOCKET, SO_REUSEADDR, (char*)&i_set_option,
+  //           sizeof(i_set_option));
+
+  // lose the pesky "Address already in use" error message
+  int yes=1;
+  if (setsockopt(socket_,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof yes) == -1) {
+    perror("setsockopt");
+    exit(1);
+  } 
+          
+          
   int bind_err = bind(socket_, res->ai_addr, res->ai_addrlen);
   if (bind_err == -1) {
     cerr << "Error: cannot bind socket: " << std::strerror(errno)
@@ -96,7 +116,7 @@ bool FileDownloadServer::HandleRequest() {
          << std::endl;;
     return false;
   } else {
-    cout << "Accepted new request.";
+    cout << "Accepted new request." << std::endl;
   }
 
   int retry_count = 0;
@@ -140,9 +160,20 @@ bool FileDownloadServer::HandleRequest() {
   }
 
   // Sends response.
-  std::string response { "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nHello World!\r\n" };
+  bool status = true;
   auto socket_sender = NewSocketSender(new_socket);
-  bool status = socket_sender->Send(response);
+  // std::string response { "HTTP/1.1 200 OK\r\nContent-Length: 14\r\n\r\nHello World!\r\n" };
+  std::ifstream file("/home/lizhieffe/Downloads/output.ts", std::ifstream::binary);
+  //std::ifstream file("/home/lizhieffe/Downloads/readme.txt", std::ifstream::binary);
+  std::string s(std::istreambuf_iterator<char>(file), {});
+  std::cout << s.size() << std::endl;
+  std::cout << "Reading " << s.size() << " characters..." << std::endl;
+
+  std::string header { "HTTP/1.1 200 OK\r\nContent-Length: $CONTENT_LENGTH\r\n\r\n" };
+  header.replace(header.find(kContextLengthStr), sizeof(kContextLengthStr)-1, std::to_string(s.size()));
+  status = socket_sender->Send(header);
+  status = socket_sender->Send(s);
+  file.close();
 
   close(new_socket);
   return status;
